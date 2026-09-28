@@ -1,13 +1,54 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
+from app.middlewares.exception_handler import register_exception_handlers
+from app.routers import auth, crm, admin
 
-# Import đích danh biến router từ từng file và đổi tên để tránh xung đột
-from app.routers.admin import router as admin_router
-from app.routers.users import router as users_router
+def create_application() -> FastAPI:
+    """Khởi tạo và cấu hình ứng dụng FastAPI"""
+    application = FastAPI(
+        title=settings.PROJECT_NAME,
+        description=settings.PROJECT_DESCRIPTION,
+        version=settings.VERSION,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json"
+    )
 
-app = FastAPI(title="CRM Backend - TTCS")
+    # Cấu hình CORS cho phép Frontend truy cập
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.BACKEND_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-# ... (Giữ nguyên các đoạn code cấu hình khác ở giữa nếu có) ...
+    # Đăng ký Global Exception Handlers (Trọng tâm SCRUM-38)
+    register_exception_handlers(application)
 
-# Đăng ký router bằng tên biến vừa đặt
-app.include_router(admin_router)
-app.include_router(users_router)
+    # Đăng ký các router nghiệp vụ
+    application.include_router(auth.router, prefix=settings.API_V1_STR)
+    application.include_router(crm.router, prefix=settings.API_V1_STR)
+    application.include_router(admin.router, prefix=settings.API_V1_STR)
+
+    @application.get("/", tags=["Health Check"])
+    def root():
+        return {
+            "success": True,
+            "message": "CRM Backend API đang hoạt động bình thường",
+            "version": settings.VERSION,
+            "docs": "/docs"
+        }
+
+    @application.get("/health", tags=["Health Check"])
+    def health_check():
+        return {"status": "healthy"}
+
+    return application
+
+app = create_application()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
